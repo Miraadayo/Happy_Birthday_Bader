@@ -275,6 +275,20 @@ button{font:inherit;color:inherit;cursor:pointer}
 @keyframes nxg{50%{filter:brightness(1.25) drop-shadow(0 0 8px #ff7a2f)}}
 .shake{animation:shk .25s}
 @keyframes shk{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+/* Asuka at the piano */
+#keys{height:47%}
+#ptop{display:flex;justify-content:center;gap:12px;width:100%;max-width:1100px;flex:1 1 0;min-height:0}
+#pleft{flex:1 1 0;min-width:0;max-width:700px;display:flex;flex-direction:column;align-items:center}
+#pleft #pmsg{width:100%;margin-top:6px;padding:8px 14px;font-size:clamp(15px,2vw,22px)}
+#pleft #pbar{margin-top:4px}
+#pdoll{position:relative;flex:0 0 clamp(150px,30vw,320px)}
+#pdoll img{position:absolute;left:0;right:0;bottom:-16px;width:100%;height:100%;object-fit:contain;object-position:50% 100%;transform-origin:50% 100%;filter:drop-shadow(0 6px 16px #000a)}
+#pdoll.play img{animation:psway 2.6s ease-in-out infinite}
+@keyframes psway{0%,100%{transform:rotate(-1.4deg) translateY(0)}50%{transform:rotate(1.4deg) translateY(-4px)}}
+.wk.ap{background:linear-gradient(#fff,#ffd9a8 80%,#ffb866);box-shadow:inset 0 -2px 0 #b9b19f,0 0 14px #ff7a2f;transform:translateY(2px)}
+.bk.ap{background:linear-gradient(90deg,#a4401a,#ff7a2f 50%,#a4401a);height:58%;box-shadow:0 2px 3px #000a,0 0 14px #ff7a2f}
+@media (prefers-reduced-motion:reduce){#pdoll.play img{animation:none}}
 </style>
 </head>
 <body>
@@ -304,8 +318,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 
   <section class="screen" id="piano">
     <canvas id="prain"></canvas>
-    <div id="pmsg"><b>Asuka</b><span id="ptxt"></span></div>
-    <div id="pbar"><span id="pcount"></span><span id="pload"></span><button class="btn" id="pdone" type="button">Continue 💌</button><button class="btn" id="pskip" type="button">Skip ⏭</button></div>
+    <div id="ptop"><div id="pleft"><div id="pmsg"><b>Asuka</b><span id="ptxt"></span></div>
+    <div id="pbar"><span id="pcount"></span><span id="pload"></span><button class="btn" id="pplay" type="button">↺ Replay</button><button class="btn" id="plesson" type="button">Your turn 🎹</button><button class="btn" id="pdone" type="button">Continue 💌</button><button class="btn" id="pskip" type="button">Skip ⏭</button></div></div><div id="pdoll"><img id="ppic" alt="Asuka playing the piano"></div></div>
     <div id="keys"><div id="kscroll"><div id="kb"></div></div></div>
   </section>
 
@@ -449,7 +463,9 @@ const JA = {
 "Listen closely. I’ll show you the notes of Sweater Weather. Press each glowing key, one by one.":"よく聞いて。Sweater Weatherの音を教えてあげる。光っている鍵盤を、一つずつ押して。",
 "Not bad... keep going, don’t lose the rhythm!":"悪くないじゃない…その調子よ、リズムを崩さないで！",
 "Wrong key! Press the one that’s glowing, idiot.":"違う！光ってる鍵盤を押しなさいよ、バカ！",
-"...You actually did it. That was... nice. Really nice. Thank you for playing with me, Bader.":"…本当にやり遂げたのね。その…よかったわ、すごく。一緒に弾いてくれてありがとう、バーダー。"
+"...You actually did it. That was... nice. Really nice. Thank you for playing with me, Bader.":"…本当にやり遂げたのね。その…よかったわ、すごく。一緒に弾いてくれてありがとう、バーダー。",
+"Watch closely, idiot. I’ll play the whole song first.":"よく見てなさい、バカ。まず私が最初から全部弾いてあげる。",
+"Hmph... not bad, right? Now it’s your turn. Press each glowing key, one by one.":"ふん…悪くないでしょ？次はあんたの番よ。光っている鍵盤を、一つずつ押して。"
 };
 /* =================================== */
 
@@ -652,7 +668,8 @@ function loadPiano(){
   const upd=()=>{ if(!ui) return;
     if(done<order.length) ui.textContent=`🎹 Loading piano… ${done}/${order.length}`;
     else if(Object.keys(pBuf).length) ui.textContent="🎹 Grand piano · 88 keys · swipe the keys sideways";
-    else { ui.textContent="🎹 Offline · using the built-in piano"; pLoading=false; } };
+    else { ui.textContent="🎹 Offline · using the built-in piano"; pLoading=false; }
+    if(done>=order.length&&pReady){ const f=pReady; pReady=null; f(); } };
   upd();
   const worker=async()=>{ while(idx<order.length){ const s=order[idx++]; const b=await fetchSample(s); if(b) pBuf[s.m]=b; done++; upd(); } };
   for(let i=0;i<6;i++) worker();
@@ -700,7 +717,7 @@ function pnext(){
 }
 function pkey(k){
   const v=pianoNote(midiOf(k.dataset.n)); k.classList.add("down"); setTimeout(()=>k.classList.remove("down"),140);
-  if(pStep>=PIANO_NOTES.length) return v;
+  if(pMode!=="learn"||pStep>=PIANO_NOTES.length) return v;
   if(k.dataset.n===PIANO_NOTES[pStep]){ pStep++; pnext();
     if(pStep===Math.floor(PIANO_NOTES.length/2)) pmsg("Not bad... keep going, don’t lose the rhythm!");
   } else { k.classList.remove("shake"); void k.offsetWidth; k.classList.add("shake"); pmsg("Wrong key! Press the one that’s glowing, idiot."); }
@@ -738,12 +755,67 @@ function pianoRain(on){
     } else { x.clearRect(0,0,c.width,c.height); if(pSnd){ try{ pSnd.src.stop(); pSnd.ctx.close(); }catch(e){} pSnd=null; } }
   }catch(e){}
 }
-function leavePiano(){ Object.values(pVoices).forEach(v=>pianoRelease(v,.6)); pianoRain(false); showFinal(); }
+function leavePiano(){ aStop(); Object.values(pVoices).forEach(v=>pianoRelease(v,.6)); pianoRain(false); showFinal(); }
 $("pdone").onclick=leavePiano; $("pskip").onclick=leavePiano;
+/* ===== Asuka plays the whole MIDI (Sweater Weather) ===== */
+// Flat list from the uploaded MIDI: start, length (both in 1/100 s), MIDI note number.
+const SW=[0,6,63,6,6,63,12,6,63,18,6,63,24,6,63,30,6,63,36,6,62,36,6,63,36,6,64,42,6,62,42,6,63,42,6,64,48,6,62,48,6,63,48,6,64,54,6,62,54,6,63,54,6,64,60,6,62,60,6,63,60,6,64,66,6,62,66,6,63,66,6,64,71,6,62,71,6,63,71,6,64,77,6,62,77,6,63,77,6,64,83,6,62,83,6,63,83,6,64,89,6,62,89,6,63,89,6,64,95,6,62,95,6,63,95,6,64,101,6,62,101,6,63,101,6,64,107,6,62,107,6,63,107,6,64,113,6,62,113,6,63,113,6,64,119,6,62,119,6,63,119,6,64,125,6,62,125,6,63,125,6,64,131,6,62,131,6,63,131,6,64,137,6,62,137,6,63,137,6,64,143,6,62,143,6,63,143,6,64,149,6,62,149,6,63,149,6,64,155,6,62,155,6,63,155,6,64,161,6,62,161,6,63,161,6,64,167,6,62,167,6,63,167,6,64,173,6,62,173,6,63,173,6,64,179,6,62,179,6,63,179,6,64,405,24,70,429,48,72,476,24,70,500,95,74,524,190,51,524,190,58,524,190,63,619,48,72,667,24,70,690,95,74,714,190,48,714,190,55,714,190,60,786,24,72,810,48,72,857,24,70,881,119,74,905,190,43,905,190,50,905,190,55,1000,48,72,1048,24,74,1071,95,72,1095,190,46,1095,190,53,1095,190,58,1167,24,70,1190,48,72,1238,24,70,1262,119,74,1286,190,51,1286,190,58,1286,190,63,1381,48,72,1429,24,70,1452,95,74,1476,190,48,1476,190,55,1476,190,60,1548,24,67,1571,48,72,1619,24,74,1643,48,72,1667,190,43,1667,190,50,1667,190,55,1690,24,70,1714,24,67,1738,24,70,1762,36,72,1798,12,70,1810,24,67,1833,71,72,1857,190,46,1857,190,53,1857,190,58,1905,24,67,1929,24,67,1952,24,72,1976,24,72,2000,24,72,2024,24,72,2048,48,51,2048,71,72,2095,48,58,2119,24,67,2143,24,72,2143,48,63,2167,24,72,2190,24,72,2190,48,58,2214,48,72,2238,48,48,2262,71,70,2286,48,55,2333,24,72,2333,48,60,2357,24,72,2381,24,72,2381,48,55,2405,71,72,2429,48,43,2476,24,72,2476,48,50,2500,24,70,2524,24,72,2524,48,55,2548,24,70,2571,24,70,2571,48,50,2595,24,72,2619,48,46,2619,95,74,2667,48,53,2714,48,58,2714,48,74,2762,48,53,2762,48,74,2810,48,51,2810,71,74,2857,48,58,2881,24,70,2905,36,70,2905,48,63,2940,36,77,2952,48,58,2976,119,74,3000,48,48,3048,48,55,3095,24,74,3095,48,60,3119,24,72,3143,24,74,3143,48,55,3167,24,72,3190,24,74,3190,48,43,3214,24,74,3238,48,50,3238,48,74,3286,48,55,3286,48,74,3333,48,50,3333,48,74,3381,48,46,3381,95,72,3429,48,53,3476,48,58,3476,48,70,3524,48,53,3524,48,67,3571,24,51,3595,24,58,3595,24,72,3619,24,63,3619,24,72,3643,12,72,3643,24,58,3655,12,72,3667,24,51,3667,24,72,3690,12,70,3690,24,58,3702,107,70,3714,24,63,3738,24,58,3762,24,48,3786,24,55,3810,24,60,3833,12,72,3833,24,55,3845,12,72,3857,24,48,3857,24,72,3881,12,74,3881,24,55,3893,48,74,3905,24,60,3929,24,55,3952,24,43,3976,24,50,3976,24,74,4000,24,55,4000,71,72,4024,24,50,4048,24,43,4071,24,50,4071,24,70,4095,24,55,4095,48,70,4119,24,50,4143,24,46,4167,24,53,4167,24,74,4190,24,58,4190,71,72,4214,24,53,4238,24,46,4262,24,53,4262,24,70,4286,24,58,4286,48,70,4310,24,53,4333,24,51,4357,24,58,4357,24,74,4381,24,63,4381,71,72,4405,24,58,4429,24,51,4452,24,58,4452,24,70,4476,24,63,4476,48,70,4500,24,58,4524,24,48,4548,24,55,4548,24,72,4571,24,60,4571,48,72,4595,24,55,4619,12,72,4619,24,48,4631,24,70,4643,24,55,4655,48,70,4667,24,60,4690,24,55,4714,12,72,4714,24,43,4726,12,72,4738,12,72,4738,24,50,4750,12,72,4762,24,55,4762,24,72,4786,12,72,4786,24,50,4798,12,72,4810,12,72,4810,24,43,4821,12,70,4833,12,70,4833,24,50,4845,24,70,4857,24,55,4881,24,50,4881,95,74,4905,24,46,4929,24,53,4952,24,58,4976,24,53,4976,24,72,5000,24,46,5000,48,72,5024,24,53,5048,24,58,5048,48,72,5071,24,53,5095,24,72,5095,190,51,5095,190,58,5095,190,63,5119,24,74,5143,24,72,5167,24,70,5190,48,67,5238,48,75,5286,95,74,5286,190,48,5286,190,55,5286,190,60,5381,48,67,5429,48,75,5476,167,74,5476,190,43,5476,190,50,5476,190,55,5643,24,70,5667,71,72,5667,190,46,5667,190,53,5667,190,58,5738,24,70,5762,48,72,5810,48,70,5857,24,72,5857,190,51,5857,190,58,5857,190,63,5881,24,74,5905,24,72,5929,24,70,5952,48,67,6000,48,75,6048,95,74,6048,190,48,6048,190,55,6048,190,60,6143,48,67,6190,48,75,6238,24,74,6238,190,43,6238,190,50,6238,190,55,6262,48,72,6310,95,72,6405,24,70,6429,48,69,6429,190,46,6429,190,53,6429,190,58,6476,24,69,6500,24,67,6524,24,69,6548,48,70,6595,12,69,6607,12,70,6619,24,67,6619,24,74,6619,48,51,6643,24,72,6667,24,72,6667,48,58,6690,24,72,6714,24,72,6714,48,63,6738,12,70,6750,48,67,6762,48,58,6810,12,72,6810,48,48,6821,12,70,6833,24,72,6857,12,72,6857,48,55,6869,12,70,6881,24,72,6905,24,72,6905,48,60,6929,12,70,6940,48,67,6952,48,55,6988,24,67,6988,24,72,7000,48,48,7012,24,67,7012,24,72,7036,12,67,7048,24,72,7048,48,55,7071,24,67,7095,24,72,7095,48,60,7119,12,67,7131,48,72,7143,48,55,7179,12,67,7179,12,70,7190,24,72,7190,48,43,7214,12,72,7226,12,67,7226,12,70,7238,24,72,7238,48,50,7262,24,72,7286,24,72,7286,48,55,7310,12,70,7321,48,67,7333,48,50,7381,48,51,7417,12,70,7429,24,67,7429,24,72,7429,48,58,7452,24,67,7452,24,72,7476,24,72,7476,48,63,7500,12,70,7512,48,67,7524,48,58,7560,12,70,7571,12,63,7571,12,72,7571,48,48,7583,12,70,7595,12,72,7607,12,70,7619,24,72,7619,48,55,7643,24,72,7667,24,72,7667,48,60,7690,12,70,7702,48,67,7714,48,55,7762,48,43,7810,48,50,7833,12,72,7845,12,70,7857,24,72,7857,48,55,7881,12,70,7893,36,72,7905,48,50,7929,12,72,7940,12,70,7952,12,72,7952,48,46,7964,12,70,7976,12,72,7988,12,70,8000,12,72,8000,48,53,8012,12,70,8024,24,72,8048,12,72,8048,48,58,8060,12,72,8071,24,72,8095,12,70,8095,48,53,8107,24,70,8131,60,67,8131,60,70,8143,48,51,8190,48,58,8214,24,70,8238,24,69,8238,24,72,8238,48,63,8262,12,69,8262,12,72,8274,48,67,8274,48,70,8274,48,74,8286,48,58,8333,12,70,8333,48,48,8345,12,70,8357,12,70,8369,12,70,8381,12,70,8381,48,55,8393,12,70,8405,24,70,8429,24,69,8429,24,72,8429,48,60,8452,12,69,8452,12,72,8464,48,67,8464,48,70,8464,48,74,8476,48,55,8524,48,43,8548,24,67,8548,24,69,8571,24,67,8571,24,69,8571,48,50,8595,24,67,8595,24,69,8619,24,67,8619,24,69,8619,48,55,8643,24,67,8667,48,50,8667,48,67,8667,48,70,8714,190,46,8714,190,53,8714,190,58,8738,24,74,8738,24,77,8762,24,72,8762,24,75,8786,24,70,8786,24,74,8810,24,69,8810,24,72,8833,24,67,8833,24,70,8857,48,70,8857,48,74,8905,24,51,8905,95,67,8905,95,72,8929,24,58,8952,24,63,8976,24,58,9000,24,51,9012,12,70,9024,24,58,9024,24,70,9048,24,63,9048,71,67,9048,71,74,9071,24,58,9095,24,48,9119,24,55,9119,24,70,9119,24,74,9119,24,77,9143,24,60,9143,71,70,9143,71,75,9167,24,55,9190,24,48,9214,24,55,9214,24,70,9214,24,74,9238,24,60,9238,48,70,9238,48,72,9262,24,55,9286,24,43,9310,24,50,9310,24,67,9310,24,70,9310,24,74,9333,24,55,9333,24,67,9333,24,70,9333,24,74,9357,24,50,9357,48,67,9357,48,70,9357,48,72,9381,24,43,9405,24,50,9405,24,67,9405,24,70,9429,24,55,9429,71,67,9429,71,70,9452,24,50,9476,24,46,9500,24,53,9500,24,70,9500,24,72,9524,24,58,9524,71,70,9524,71,74,9548,24,53,9571,24,46,9595,24,53,9595,24,70,9619,24,58,9619,48,67,9643,24,53,9667,24,51,9690,24,58,9690,24,72,9714,24,63,9714,48,72,9738,24,58,9762,12,72,9762,24,51,9774,24,70,9786,24,58,9798,48,70,9810,24,63,9833,24,58,9857,12,72,9857,24,48,9869,12,72,9881,12,72,9881,24,55,9893,12,72,9905,24,60,9905,24,72,9929,12,72,9929,24,55,9940,12,72,9952,12,72,9952,24,48,9964,12,70,9976,12,70,9976,24,55,9988,24,70,10000,24,60,10024,24,55,10024,95,67,10024,95,74,10048,24,43,10071,24,50,10095,24,55,10119,24,50,10119,24,69,10143,24,43,10143,71,70,10167,24,50,10190,24,55,10214,24,50,10214,24,72,10238,24,46,10238,24,62,10238,24,74,10262,24,53,10262,24,62,10262,24,74,10286,24,58,10286,24,62,10286,24,74,10310,24,53,10310,24,72,10333,24,46,10333,48,72,10357,24,53,10381,24,58,10381,48,72,10405,24,53,10429,24,72,10429,190,51,10429,190,58,10429,190,63,10452,24,74,10476,24,72,10500,24,70,10524,48,67,10571,48,75,10619,95,74,10619,190,48,10619,190,55,10619,190,60,10714,48,67,10762,48,75,10810,167,74,10810,190,43,10810,190,50,10810,190,55,10976,24,70,11000,71,72,11000,190,46,11000,190,53,11000,190,58,11071,24,70,11095,48,72,11143,48,70,11190,24,72,11190,190,51,11190,190,58,11190,190,63,11214,24,74,11238,24,72,11262,24,70,11286,48,67,11333,48,75,11381,95,74,11381,190,48,11381,190,55,11381,190,60,11476,48,67,11524,48,75,11571,24,74,11571,190,43,11571,190,50,11571,190,55,11595,48,72,11643,95,72,11738,24,70,11762,48,69,11762,190,46,11762,190,53,11762,190,58,11810,24,69,11833,24,67,11857,24,69,11881,71,70,11952,24,72,11952,190,51,11952,190,58,11952,190,63,11976,24,74,12000,24,72,12024,24,70,12048,48,67,12095,48,75,12143,95,74,12143,190,48,12143,190,55,12143,190,60,12238,48,67,12286,48,75,12333,167,74,12333,190,43,12333,190,50,12333,190,55,12500,24,70,12524,71,72,12524,190,46,12524,190,53,12524,190,58,12595,24,70,12619,48,72,12667,48,70,12714,24,72,12714,190,51,12714,190,58,12714,190,63,12738,24,74,12762,24,72,12786,24,70,12810,48,67,12857,48,75,12905,95,74,12905,190,48,12905,190,55,12905,190,60,13000,48,67,13048,48,75,13095,24,74,13095,190,43,13095,190,50,13095,190,55,13119,48,72,13167,95,72,13262,24,70,13286,48,69,13286,190,46,13286,190,53,13286,190,58,13333,24,69,13357,24,67,13381,24,69,13405,71,70];
+const A_END=134.76;
+let pMode="show",pReady=null,aTimer=null,aOn=false,aI=0,aT0=0,aV=[],aFace=0,aOut=null,aKM={},aScr=0;
+const LESSON1="Watch closely, idiot. I’ll play the whole song first.", LESSON2="Hmph... not bad, right? Now it’s your turn. Press each glowing key, one by one.";
+const noteName=m=>NN[m%12]+(Math.floor(m/12)-1);
+const akey=m=>aKM[m]||(aKM[m]=document.querySelector(`#kb [data-n="${noteName(m)}"]`));
+function pface(f){ $("ppic").src=EMBED[f]||IMG(f); }
+// one piano note scheduled at an exact audio time (falls back to the built-in synth if samples are missing)
+function pnAt(m,vel,when,hold,fade){
+  const ctx=AC; let best=null;
+  for(const s of SAL){ if(pBuf[s.m]&&(!best||Math.abs(s.m-m)<Math.abs(best.m-m))) best=s; }
+  if(!best||Math.abs(best.m-m)>4){ setTimeout(()=>pianoTone(m),Math.max(0,(when-ctx.currentTime)*1000)); return; }
+  const src=ctx.createBufferSource(); src.buffer=pBuf[best.m]; src.playbackRate.value=Math.pow(2,(m-best.m)/12);
+  const lp=ctx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=2500+vel*6500;
+  const g=ctx.createGain(),v=.35+.6*vel; g.gain.setValueAtTime(v,when); g.gain.setValueAtTime(v,when+hold); g.gain.exponentialRampToValueAtTime(.0001,when+hold+fade);
+  src.connect(lp); lp.connect(g); g.connect(aOut); src.start(when); src.stop(when+hold+fade+.05);
+}
+function aTick(){
+  const now=AC.currentTime-aT0, n=SW.length/3;
+  while(aI<n&&SW[aI*3]/100<now+.15){
+    const t=SW[aI*3]/100,d=SW[aI*3+1]/100,m=SW[aI*3+2],sh=d<.2;
+    pnAt(m,.55+Math.random()*.15,aT0+t,sh?.1:Math.max(d,.5),sh?.25:.9);
+    aV.push({on:t,off:t+Math.max(d,.14),m,s:0}); aI++;
+  }
+  for(let i=aV.length-1;i>=0;i--){ const e=aV[i];
+    if(!e.s&&e.on<=now){ e.s=1; e.k=akey(e.m); if(e.k){ e.k._a=(e.k._a||0)+1; e.k.classList.add("ap"); if(performance.now()-aScr>350){ aScr=performance.now(); pscroll(e.k); } } }
+    if(now>=e.off){ if(e.k&&e.s&&!--e.k._a) e.k.classList.remove("ap"); aV.splice(i,1); } }
+  if(aFace<1&&now>A_END/2){ aFace=1; pface("happy"); }
+  if(aI>=n&&now>A_END+1.5) toLesson("blush");
+}
+function aStop(){
+  clearInterval(aTimer); aTimer=null; aOn=false;
+  if(aOut){ try{ aOut.gain.setTargetAtTime(0,AC.currentTime,.05); }catch(e){} aOut=null; }
+  aV=[]; document.querySelectorAll("#kb .ap").forEach(k=>{ k._a=0; k.classList.remove("ap"); });
+  $("pdoll").classList.remove("play");
+}
+function aStart(){
+  pReady=null; aStop(); pMode="show";
+  const ctx=pAudio(); aOut=ctx.createGain(); aOut.connect(pianoBus());
+  document.querySelectorAll("#kb .nx").forEach(k=>k.classList.remove("nx"));
+  $("pcount").textContent=""; $("plesson").style.display="inline-block"; $("pdoll").classList.add("play");
+  aI=0; aV=[]; aFace=0; aT0=ctx.currentTime+.6; aOn=true; pface("smug");
+  aTimer=setInterval(aTick,25);
+}
+function toLesson(face){
+  aStop(); pMode="learn"; $("plesson").style.display="none"; pface(face||"smug");
+  if(pStep<PIANO_NOTES.length){ pmsg(LESSON2); pnext(); }
+}
+$("pplay").onclick=aStart; $("plesson").onclick=()=>toLesson("smug");
 function startPiano(){
-  show("piano"); buildKeys(); pStep=0; $("pdone").style.display="none"; $("pskip").style.display="inline-block";
-  pianoRain(true); loadPiano(); pscroll($("kb").querySelector('[data-n="C4"]'),false); pnext();
-  pmsg("Listen closely. I’ll show you the notes of Sweater Weather. Press each glowing key, one by one.");
+  show("piano"); buildKeys(); aKM={}; pStep=0; pMode="show";
+  $("pdone").style.display="none"; $("pskip").style.display="inline-block"; $("plesson").style.display="inline-block"; $("pcount").textContent="";
+  pface("smug"); pianoRain(true); loadPiano(); pscroll($("kb").querySelector('[data-n="C4"]'),false);
+  pmsg(LESSON1);
+  // Asuka starts once the grand-piano samples are loaded (or after 8 s at the latest)
+  pReady=aStart; if(Object.keys(pBuf).length>=SAL.length) aStart();
+  setTimeout(()=>{ if(pReady) aStart(); },8000);
 }
 function pianoIntro(){
   play([["blush","...Wait. Before you read Mira’s message, there’s something I want to tell you."],
