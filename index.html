@@ -259,12 +259,16 @@ button{font:inherit;color:inherit;cursor:pointer}
 #pbar{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:18px}
 #pbar .btn{font-size:17px;padding:4px 16px}
 #pdone{display:none}
-#keys{margin-top:auto;width:min(100%,1000px);height:52%;background:#20110f;border-radius:10px 10px 0 0;border-top:10px solid #3b1d16;padding:10px 10px 0;box-shadow:0 -6px 30px #0008}
-#kb{position:relative;display:flex;height:100%}
-.wk{flex:1;position:relative;margin:0 1px;background:linear-gradient(#fff,#eee7da 80%,#c9c1b0);border-radius:0 0 7px 7px;box-shadow:inset 0 -6px 0 #b9b19f;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;color:#8a8170;font-size:13px;touch-action:none;user-select:none}
+#keys{margin-top:auto;width:100%;height:52%;background:#20110f;border-radius:10px 10px 0 0;border-top:10px solid #3b1d16;padding:10px 0 0;box-shadow:0 -6px 30px #0008}
+#kscroll{height:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:#ff7a2f #2a1a16;-webkit-overflow-scrolling:touch}
+#kb{--ww:clamp(40px,11vw,54px);--bw:calc(var(--ww)*.62);position:relative;display:flex;height:100%;width:calc(var(--ww)*52)}
+.wk{flex:0 0 var(--ww);position:relative;background:linear-gradient(#fff,#f1ebdf 78%,#d3cbb9);border-right:1px solid #a89f8c;border-radius:0 0 7px 7px;box-shadow:inset 0 -6px 0 #b9b19f,inset 1px 0 0 #fff;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;color:#8a8170;font-size:12px;touch-action:pan-x;user-select:none;-webkit-user-select:none}
+.wk.mc{color:#d3202e;font-weight:700}
 .wk.down{background:linear-gradient(#e4dccc,#c9c1b0);box-shadow:inset 0 -2px 0 #b9b19f;transform:translateY(2px)}
-.bk{position:absolute;top:0;width:3.8%;height:60%;z-index:2;background:linear-gradient(90deg,#222,#050505 40%,#222);border-radius:0 0 5px 5px;box-shadow:0 5px 6px #000a,inset 0 -8px 0 #111;touch-action:none}
+.bk{position:absolute;top:0;left:calc(var(--i)*var(--ww) - var(--bw)/2);width:var(--bw);height:60%;z-index:2;background:linear-gradient(90deg,#222,#050505 40%,#222);border-radius:0 0 5px 5px;box-shadow:0 5px 6px #000a,inset 0 -8px 0 #111;touch-action:pan-x}
 .bk.down{height:58%;box-shadow:0 2px 3px #000a}
+#pload{font-size:14px;opacity:.75}
+#pbar{flex-wrap:wrap;justify-content:center}
 .nx{animation:nxg .9s ease-in-out infinite}
 .wk.nx{background:linear-gradient(#fff,#ffd9a8 80%,#ffb866)}
 .bk.nx{background:linear-gradient(90deg,#a4401a,#ff7a2f 50%,#a4401a)}
@@ -301,8 +305,8 @@ button{font:inherit;color:inherit;cursor:pointer}
   <section class="screen" id="piano">
     <canvas id="prain"></canvas>
     <div id="pmsg"><b>Asuka</b><span id="ptxt"></span></div>
-    <div id="pbar"><span id="pcount"></span><button class="btn" id="pdone" type="button">Continue 💌</button><button class="btn" id="pskip" type="button">Skip ⏭</button></div>
-    <div id="keys"><div id="kb"></div></div>
+    <div id="pbar"><span id="pcount"></span><span id="pload"></span><button class="btn" id="pdone" type="button">Continue 💌</button><button class="btn" id="pskip" type="button">Skip ⏭</button></div>
+    <div id="keys"><div id="kscroll"><div id="kb"></div></div></div>
   </section>
 
   <section class="screen" id="final">
@@ -603,8 +607,8 @@ function showFinal(){
 }
 
 /* ===== Piano lesson (with rain) ===== */
-// Notes Asuka teaches, in order. Replace with the real song notes (names like "E4", "F#4"). Range: C4-C6.
-const PIANO_NOTES=["E4","G4","A4","G4","E4","D4","C4","D4","E4","G4","E4","D4"];
+// Notes Asuka teaches, in order: the opening melody phrase, taken from the uploaded MIDI (names like "E4", "A#4"). Any key A0-C8 works.
+const PIANO_NOTES=["A#4","C5","A#4","D5","C5","A#4","D5","C5","C5","A#4","D5","C5","D5","C5"];
 const NN=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const midiOf=n=>{const m=n.match(/^([A-G]#?)(\d)$/);return NN.indexOf(m[1])+12*(+m[2]+1);};
 let pStep=0,pRev=null,pRun=false,pSnd=null,pd=[];
@@ -619,33 +623,104 @@ function pianoTone(m){ try{
   mix.gain.setValueAtTime(0,T); mix.gain.linearRampToValueAtTime(.32,T+.005); mix.gain.exponentialRampToValueAtTime(.12,T+.4); mix.gain.exponentialRampToValueAtTime(.0001,T+dur);
   mix.connect(lp); lp.connect(AC.destination); lp.connect(pRev);
   [[1,1],[2,.5],[3,.28],[4,.15],[5,.08],[6,.04]].forEach(([h,a])=>[-1.5,1.5].forEach(dt=>{
-    const o=AC.createOscillator(),g=AC.createGain(); o.frequency.value=f*h*(1+h*h*.0002); o.detune.value=dt; g.gain.value=a*.5;
+    if(f*h>18000) return; const o=AC.createOscillator(),g=AC.createGain(); o.frequency.value=f*h*(1+h*h*.0002); o.detune.value=dt; g.gain.value=a*.5;
     o.connect(g); g.connect(mix); o.start(T); o.stop(T+dur+.1); }));
   const nz=AC.createBufferSource(),nb=AC.createBuffer(1,2000,AC.sampleRate),nd=nb.getChannelData(0);
   for(let i=0;i<2000;i++) nd[i]=(Math.random()*2-1)*(1-i/2000); nz.buffer=nb;
   const ng=AC.createGain(); ng.gain.value=.05; nz.connect(ng); ng.connect(lp); nz.start(T);
 }catch(e){} }
+
+/* ===== Realistic grand piano: real Salamander Grand samples, all 88 keys (A0-C8) =====
+   Samples load from a CDN when the piano opens; until then (or if offline) the built-in synth plays. */
+const SAL_BASES=["https://tonejs.github.io/audio/salamander/","https://cdn.jsdelivr.net/gh/Tonejs/audio@master/salamander/"];
+const SAL=[{m:21,f:"A0"}];
+for(let o=1;o<=7;o++) [["C",0],["Ds",3],["Fs",6],["A",9]].forEach(([n,sh])=>SAL.push({m:12*(o+1)+sh,f:n+o}));
+SAL.push({m:108,f:"C8"});
+let pBuf={},pLoading=false,pBus=null,pVoices={};
+function pAudio(){ AC=AC||new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume(); return AC; }
+async function fetchSample(s){
+  for(const base of SAL_BASES){
+    try{ const r=await fetch(base+s.f+".mp3"); if(!r.ok) continue; const ab=await r.arrayBuffer();
+      return await new Promise((ok,no)=>AC.decodeAudioData(ab,ok,no)); }catch(e){}
+  }
+  return null;
+}
+function loadPiano(){
+  if(pLoading) return; pLoading=true; pAudio();
+  const order=SAL.slice().sort((a,b)=>Math.abs(a.m-66)-Math.abs(b.m-66));
+  let done=0,idx=0; const ui=$("pload");
+  const upd=()=>{ if(!ui) return;
+    if(done<order.length) ui.textContent=`🎹 Loading piano… ${done}/${order.length}`;
+    else if(Object.keys(pBuf).length) ui.textContent="🎹 Grand piano · 88 keys · swipe the keys sideways";
+    else { ui.textContent="🎹 Offline · using the built-in piano"; pLoading=false; } };
+  upd();
+  const worker=async()=>{ while(idx<order.length){ const s=order[idx++]; const b=await fetchSample(s); if(b) pBuf[s.m]=b; done++; upd(); } };
+  for(let i=0;i<6;i++) worker();
+}
+function pianoBus(){
+  if(pBus) return pBus; const ctx=AC;
+  const n=Math.floor(ctx.sampleRate*3.4),ir=ctx.createBuffer(2,n,ctx.sampleRate);
+  for(let c=0;c<2;c++){ const d=ir.getChannelData(c); let lp=0;
+    for(let i=0;i<n;i++){ const t=i/n; lp+=((Math.random()*2-1)*Math.pow(1-t,2.6)-lp)*(.55-.45*t); d[i]=lp*2.2; } }
+  const bus=ctx.createGain(); bus.gain.value=.95;
+  const hs=ctx.createBiquadFilter(); hs.type="highshelf"; hs.frequency.value=4500; hs.gain.value=-6;      // mellow, soft-cover tone
+  const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-16; comp.ratio.value=3; comp.attack.value=.005; comp.release.value=.25;
+  const cv=ctx.createConvolver(); cv.buffer=ir; const wet=ctx.createGain(); wet.gain.value=.3;           // dreamy room reverb
+  bus.connect(hs); hs.connect(comp); comp.connect(ctx.destination); hs.connect(cv); cv.connect(wet); wet.connect(ctx.destination);
+  return pBus=bus;
+}
+function pianoRelease(v,t=.9){ if(!v) return; try{ const T=AC.currentTime; v.g.gain.cancelScheduledValues(T); v.g.gain.setValueAtTime(Math.max(v.g.gain.value,.0002),T); v.g.gain.exponentialRampToValueAtTime(.0001,T+t); v.src.stop(T+t+.05); }catch(e){} }
+function pianoNote(m,vel){
+  vel=vel||(.62+Math.random()*.16);
+  try{
+    const ctx=pAudio(); let best=null;
+    for(const s of SAL){ if(pBuf[s.m] && (!best||Math.abs(s.m-m)<Math.abs(best.m-m))) best=s; }
+    if(!best||Math.abs(best.m-m)>4){ pianoTone(m); return null; }
+    const bus=pianoBus(),T=ctx.currentTime;
+    if(pVoices[m]) pianoRelease(pVoices[m],.15);
+    const src=ctx.createBufferSource(); src.buffer=pBuf[best.m]; src.playbackRate.value=Math.pow(2,(m-best.m)/12);
+    const lp=ctx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=2500+vel*6500;
+    const g=ctx.createGain(); g.gain.value=.35+.6*vel;
+    src.connect(lp); lp.connect(g); g.connect(bus); src.start(T);
+    const v={src,g}; pVoices[m]=v; src.onended=()=>{ if(pVoices[m]===v) delete pVoices[m]; };
+    return v;
+  }catch(e){ return null; }
+}
+function pscroll(k,smooth){
+  const sc=$("kscroll"); if(!sc||!k) return; const c=k.offsetLeft+k.offsetWidth/2;
+  if(smooth!==false && c>sc.scrollLeft+70 && c<sc.scrollLeft+sc.clientWidth-70) return;
+  sc.scrollTo({left:Math.max(0,c-sc.clientWidth/2),behavior:smooth===false?"auto":"smooth"});
+}
 function pmsg(t){ $("ptxt").textContent=t; speak(t); }
 function pnext(){
   document.querySelectorAll("#kb .nx").forEach(k=>k.classList.remove("nx"));
   $("pcount").textContent=`♪ ${pStep}/${PIANO_NOTES.length}`;
   if(pStep>=PIANO_NOTES.length){ sfx("win"); pmsg("...You actually did it. That was... nice. Really nice. Thank you for playing with me, Bader."); $("pdone").style.display="inline-block"; $("pskip").style.display="none"; return; }
-  const k=document.querySelector(`#kb [data-n="${PIANO_NOTES[pStep]}"]`); if(k) k.classList.add("nx");
+  const k=document.querySelector(`#kb [data-n="${PIANO_NOTES[pStep]}"]`); if(k){ k.classList.add("nx"); pscroll(k); }
 }
 function pkey(k){
-  pianoTone(midiOf(k.dataset.n)); k.classList.add("down"); setTimeout(()=>k.classList.remove("down"),140);
-  if(pStep>=PIANO_NOTES.length) return;
+  const v=pianoNote(midiOf(k.dataset.n)); k.classList.add("down"); setTimeout(()=>k.classList.remove("down"),140);
+  if(pStep>=PIANO_NOTES.length) return v;
   if(k.dataset.n===PIANO_NOTES[pStep]){ pStep++; pnext();
     if(pStep===Math.floor(PIANO_NOTES.length/2)) pmsg("Not bad... keep going, don’t lose the rhythm!");
   } else { k.classList.remove("shake"); void k.offsetWidth; k.classList.add("shake"); pmsg("Wrong key! Press the one that’s glowing, idiot."); }
+  return v;
 }
 function buildKeys(){
-  const kb=$("kb"); kb.innerHTML=""; const W=[];
-  for(const o of [4,5]) for(const n of ["C","D","E","F","G","A","B"]) W.push(n+o); W.push("C6");
-  const w=100/W.length;
-  W.forEach((n,i)=>{ const k=el("div","wk"); k.dataset.n=n; if(n[0]==="C") k.textContent=n; kb.appendChild(k); });
-  W.forEach((n,i)=>{ if("CDFGA".includes(n[0]) && i<W.length-1){ const k=el("div","bk"); k.dataset.n=n[0]+"#"+n.slice(1); k.style.left=((i+1)*w-1.9)+"%"; kb.appendChild(k); } });
-  kb.querySelectorAll(".wk,.bk").forEach(k=>k.addEventListener("pointerdown",e=>{ e.preventDefault(); pkey(k); }));
+  const kb=$("kb"); kb.innerHTML=""; const W=["A0","B0"];
+  for(let o=1;o<=7;o++) for(const n of ["C","D","E","F","G","A","B"]) W.push(n+o); W.push("C8");   // 52 white keys, A0-C8
+  W.forEach(n=>{ const k=el("div","wk"+(n==="C4"?" mc":"")); k.dataset.n=n; if(n[0]==="C") k.textContent=n; kb.appendChild(k); });
+  W.forEach((n,i)=>{ if("CDFGA".includes(n[0]) && i<W.length-1){ const k=el("div","bk"); k.dataset.n=n[0]+"#"+n.slice(1); k.style.setProperty("--i",i+1); kb.appendChild(k); } });
+  kb.querySelectorAll(".wk,.bk").forEach(k=>{
+    let sx=0,sy=0,id=null,voice=null;
+    k.addEventListener("pointerdown",e=>{ sx=e.clientX; sy=e.clientY; id=e.pointerId;
+      if(e.pointerType==="mouse"){ e.preventDefault(); voice=pkey(k); } });
+    k.addEventListener("pointerup",e=>{
+      if(e.pointerType==="mouse"){ const v=voice; voice=null; if(v) setTimeout(()=>pianoRelease(v,.9),180); return; }
+      if(id===e.pointerId && Math.hypot(e.clientX-sx,e.clientY-sy)<10){ const v=pkey(k); if(v) setTimeout(()=>pianoRelease(v,1.2),1600); }   // tap = play, swipe = scroll
+    });
+  });
+  const sc=$("kscroll"); sc.onwheel=e=>{ if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){ e.preventDefault(); sc.scrollLeft+=e.deltaY; } };
 }
 function pianoRain(on){
   const c=$("prain"),x=c.getContext("2d"); pRun=on;
@@ -663,11 +738,11 @@ function pianoRain(on){
     } else { x.clearRect(0,0,c.width,c.height); if(pSnd){ try{ pSnd.src.stop(); pSnd.ctx.close(); }catch(e){} pSnd=null; } }
   }catch(e){}
 }
-function leavePiano(){ pianoRain(false); showFinal(); }
+function leavePiano(){ Object.values(pVoices).forEach(v=>pianoRelease(v,.6)); pianoRain(false); showFinal(); }
 $("pdone").onclick=leavePiano; $("pskip").onclick=leavePiano;
 function startPiano(){
   show("piano"); buildKeys(); pStep=0; $("pdone").style.display="none"; $("pskip").style.display="inline-block";
-  pianoRain(true); pnext();
+  pianoRain(true); loadPiano(); pscroll($("kb").querySelector('[data-n="C4"]'),false); pnext();
   pmsg("Listen closely. I’ll show you the notes of Sweater Weather. Press each glowing key, one by one.");
 }
 function pianoIntro(){
